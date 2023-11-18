@@ -4,6 +4,7 @@
 #include <vector>
 #include <algorithm>
 #include <functional>
+#include <map>
 using namespace std;
 typedef unsigned short int _uint16;
 
@@ -92,7 +93,7 @@ private:
 
  
 wofstream fout;
-const int from = 0x620; const int sz = 0x41;//consonants 0x621-0x64A [ؠ-ي] + vowels [ڀً-ڀْ]
+const int from = 0x621; const int sz = 0x34;//consonants 0x621-0x64A [ؠ-ي] + vowels [ڀً-ڀْ]
 typedef wstring::iterator ptr;
 const int N = 1000000, INF = 1000000000; wstring str;
 unsigned int txn[N][sz]; //array of transitions; Corresponding: suffix-node <-> incoming edge <-> substring
@@ -139,7 +140,7 @@ void build_SuffixTree() {
         ukk_add(*la - from);
 }
 _uint16 rep[N]; // substring repeats count
-struct freq { _uint16 rep; _uint16 len; ptr from, to; };  vector<freq > oft;
+struct freq { _uint16 rep; _uint16 wt; ptr from, to; };  vector<freq > oft;
 void postProcess(void) {
     // Depth-First-Search on the Tree, to find substring' repeats ...
     if (ts == 0) { fout << L'\n'; return; }
@@ -166,43 +167,51 @@ void postProcess(void) {
     oft.reserve(ts);
     fout << L'\n'; logSfxT = false; push=true; dfs(0, L""); //pass thru to compute repeats
     //fout << L'\n'; logSfxT = true; dfs(0, L""); //print substring repeats
-    logSfxT = true; std::replace(str.begin(), str.end(), (wchar_t)0x640, L' ');
+    logSfxT = true; std::replace(str.begin(), str.end(), (wchar_t)0x63f, L' ');
 
+    // Remove duplicates: after sorting by rep, to, wt(~= to-from)
     std::function<bool(const freq& a, const freq& b)> cmp;
-    // Remove duplicates: after sorting by rep, to, len(=from-to)
     cmp = [&](const freq& a, const freq& b)->bool {
         if (a.rep != b.rep) return (a.rep < b.rep);
         if (a.to != b.to) return (a.to < b.to);
-        return (a.len < b.len); };
+        return (a.wt < b.wt); };
     std::sort(oft.begin(), oft.end(), cmp);
     for (vector<freq>::iterator i = oft.begin(); i < oft.end() - 1; i++)
         if ((*i).rep==(*(i+1)).rep and (*i).to == (*(i + 1)).to) (*i).rep = 0;
 
-    // all done; now print substrings, by their repeats DESC, length DESC
+    for (vector<freq>::iterator i = oft.begin(); i < oft.end() - 1; i++) {
+        if (((*i).wt > 2) && (*((*i).from) != L' ' || *((*i).to - 1) != L' ')) //if not start or not end in ' '
+            //for (auto x = (*i).from + 1; x < (*i).to - 1; x++) if (*x == L' ') (*i).rep = 0; ...Inefficient, so commented.
+            if ((*i).wt > 5) (*i).rep = 0;
+    }
+        
+    // all done; now print substrings, by their repeats DESC, wt DESC
     cmp = [&](const freq& a, const freq& b)->bool {
-        int r = a.rep*a.rep*a.len - b.rep*b.rep*b.len; if (r) return (r > 0);
+        int r = a.rep*a.rep*a.wt - b.rep*b.rep*b.wt; if (r) return (r > 0);
         if (a.rep != b.rep) return (a.rep > b.rep);
-        return (a.len > b.len);
+        return (a.wt > b.wt);
     };
     std::sort(oft.begin(), oft.end(), cmp);
-    for (auto& a : oft) if (logSfxT && a.rep > 1) fout << a.rep << L"x\t" << (a.len) << L"ch:\t" << wstring(a.from, a.to) << L'\n';
+    for (auto& a : oft) if (logSfxT && a.rep > 1)
+        fout << a.rep << L"x\t" << (a.to-a.from) << L"ch:\t" << wstring(a.from, a.to) << L'\n';
 }
 int main(int argc, char* a[])
 {
-    wifstream fin("sampleInputs/_quran-simple-clean.txt"); fin.imbue(std::locale("zh_CN.UTF-8"));
+    wifstream fin("sampleInputs/_quran-simple.txt"); fin.imbue(std::locale("zh_CN.UTF-8"));
     fout.open("sampleOutputs/output.txt"); fout.imbue(std::locale("zh_CN.UTF-8"));
     wstring text; size_t len = 0; str = L"12345";
-    wchar_t c; //map<wchar_t, int> histogram;
+    wchar_t c; map<wchar_t, int> histogram;
     while (!fin.eof()) {
-        fin.get(c); 
-        if (c==L' ' || c==L'\n' || c==0x6da || c==0x6de) c = (wchar_t)0x640;
-        if (c == 0x670) c = 0x627; //superscript Alef 
-        if ((c >= from && c < from + sz) || c == L' ') { //histogram[c] ++;
-            str.push_back(c); len++; }
-        //else std::cout << "found " << hex << (int)c << " at " << len << '\n';
-    }
+        fin.get(c); histogram[c]++;
+        if (c == L'#') break; // * stop Reading at 1st '#', in these input files
+        if (c == L' ' || c == L'\n') { c = (wchar_t)0x63f; //unused char in range
+            if (*(str.end() - 1) == c) continue; } //don't double-add iff continous
+        if (c == 0x670 || c == 0x671) c = 0x627; //superscript Alef or Alef wasla
+        if (c >= from && c < from + sz) { str.push_back(c); len++; }
+        //else std::cout << "ignore char, don't push " << hex << (int)c << " at " << len << '\n';
+    }   fin.close();
 
-    //for (auto& e : histogram) fout << e.first << e.second << endl;
+    //for (auto& e : histogram) { fout << hex << L"0x" << (int)e.first << L" " << e.first << L'\t' << dec << e.second << endl; }
     std::cout << "read " << len << " chars" << endl << endl;
 
     // testing on various inputs, and of implmentations
@@ -213,6 +222,6 @@ int main(int argc, char* a[])
     build_SuffixTree();
     postProcess();
 
-    fin.close();    fout.close();
+    fout.close();
     return 0;
 }

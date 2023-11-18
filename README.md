@@ -9,9 +9,8 @@ outputs the phrases' list along with repeat counts.
 
 Build/Run 	This has in internal Visual Studio .vcproj, .sln , Just open+compile+run. 
 
-## Pending enhancement to-do's
-* While Reading, stop at 1st '#'
-* Read & print chars Histograms
-* while Reading, replace multiple whitespace with ' '
-* in vector<freq> oft, anything larger than word, skip iff not start/end with ' '
-
+## Enhancements 
+* While Reading, stop at 1st '#' - done
+* Read & print chars Histograms & get text pattern - done
+* while Reading, replace multiple whitespace with ' '  - done
+* in vector<freq> oft, anything larger than word, skip iff not start/end with ' ' -todo
