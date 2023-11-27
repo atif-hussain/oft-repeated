@@ -1,4 +1,5 @@
 ﻿#define _CRT_SECURE_NO_WARNINGS
+//#define _ITERATOR_DEBUG_LEVEL 2
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -93,9 +94,9 @@ private:
 
  
 wofstream fout;
-const int from = 0x621; const int sz = 0x34;//consonants 0x621-0x64A [ؠ-ي] + vowels [ڀً-ڀْ]
+const int from = 0x621; const int sz = 0x35;//consonants 0x621-0x64A [ؠ-ي] + vowels 0x64B-0x654 [ڀً-ڀْ]
 typedef wstring::iterator ptr;
-const int N = 1000000, INF = 1000000000; wstring str;
+const int N = 2000000, INF = 1000000000; wstring str;
 unsigned int txn[N][sz]; //array of transitions; Corresponding: suffix-node <-> incoming edge <-> substring
 ptr l[N], r[N]; // left,right boundaries of substring corresponding to incoming edge
 unsigned int p[N], s[N]; // parent node, suffix link
@@ -113,10 +114,13 @@ void ukk_add(int c) { // add character s to suffix-tree
     else {
         // otherwise split the edge in two with middle in node ts
         l[ts] = l[tv];  r[ts] = tp;  p[ts] = p[tv]; txn[ts][*tp - from] = tv; 
+        _ASSERT(l[ts] <= r[ts]);
         // add leaf ts+1. It corresponds to transition through c.
         l[ts + 1] = la; p[ts + 1] = ts; txn[ts][c] = ts + 1; 
+        _ASSERT(l[ts + 1] <= r[ts + 1]);
         // update info for the current node - remember to mark ts as parent of tv
         l[tv] = tp;  p[tv] = ts;  txn[p[ts]][*(l[ts]) - from] = ts;  
+        _ASSERT(l[tv] <= r[tv]);
         // prepare for descent
         // tp will mark where are we in the current suffix
         tv = s[p[ts]]; tp = l[ts];
@@ -135,19 +139,20 @@ void build_SuffixTree() {
 	ts = 2; tv = 0; fill(r, r + N, str.end());  // tree root
     r[0] = str.begin()+5; r[1] = r[0]; tp = r[0]; l[0] = r[0]-1; l[1] = l[0];
 
+    ptr _end = str.end();
     // add the text to the tree, letter by letter
-    for (la = r[0]; la < str.end(); ++la)
+    for (la = r[0]; la < _end; ++la)
         ukk_add(*la - from);
 }
 _uint16 rep[N]; // substring repeats count
-struct freq { _uint16 rep; _uint16 wt; ptr from, to; };  vector<freq > oft;
+struct freq { _uint16 rep; int wt; ptr from, to; };  vector<freq > oft;
 void postProcess(void) {
     // Depth-First-Search on the Tree, to find substring' repeats ...
     if (ts == 0) { fout << L'\n'; return; }
-    _uint16 pl = -1; bool logSfxT; bool push;
+    int pl = -1; bool logSfxT; bool push;
     std::function<void(int, const std::wstring&)> dfs;
     dfs = [&](const int t, const std::wstring& pre) {
-        pl += (_uint16) (r[t] - l[t]);
+        pl += (int) (r[t] - l[t]);
         if (t < 0 || r[t] < l[t])
             cout << "ooch" << endl;
         if (logSfxT) fout << L"- "  << (t > 1 ? wstring(l[t], r[t]) : L"")
@@ -162,12 +167,12 @@ void postProcess(void) {
         }
         if (rep[t] == 0) rep[t] = 1; //count child nodes only 
         if (push) { freq tmp = { rep[t], pl, r[t] - pl, r[t] }; oft.push_back(tmp); }
-        pl -= (_uint16) (r[t] - l[t]);
+        pl -= (int) (r[t] - l[t]);
     };
     oft.reserve(ts);
     fout << L'\n'; logSfxT = false; push=true; dfs(0, L""); //pass thru to compute repeats
     //fout << L'\n'; logSfxT = true; dfs(0, L""); //print substring repeats
-    logSfxT = true; std::replace(str.begin(), str.end(), (wchar_t)0x63f, L' ');
+    logSfxT = true; std::replace(str.begin(), str.end(), (wchar_t)0x655, L' ');
 
     // Remove duplicates: after sorting by rep, to, wt(~= to-from)
     std::function<bool(const freq& a, const freq& b)> cmp;
@@ -194,6 +199,7 @@ void postProcess(void) {
     std::sort(oft.begin(), oft.end(), cmp);
     for (auto& a : oft) if (logSfxT && a.rep > 1)
         fout << a.rep << L"x\t" << (a.to-a.from) << L"ch:\t" << wstring(a.from, a.to) << L'\n';
+    fout.flush();
 }
 int main(int argc, char* a[])
 {
@@ -204,14 +210,16 @@ int main(int argc, char* a[])
     while (!fin.eof()) {
         fin.get(c); histogram[c]++;
         if (c == L'#') break; // * stop Reading at 1st '#', in these input files
-        if (c == L' ' || c == L'\n') { c = (wchar_t)0x63f; //unused char in range
-            if (*(str.end() - 1) == c) continue; } //don't double-add iff continous
+        if (c == L' ' || c == L'\n') { c = (wchar_t)0x655; //unused char in range
+            if (str.back() == c) continue; } //don't double-add iff continous
         if (c == 0x670 || c == 0x671) c = 0x627; //superscript Alef or Alef wasla
         if (c >= from && c < from + sz) { str.push_back(c); len++; }
         //else std::cout << "ignore char, don't push " << hex << (int)c << " at " << len << '\n';
-    }   fin.close();
+    } fin.close();
 
-    //for (auto& e : histogram) { fout << hex << L"0x" << (int)e.first << L" " << e.first << L'\t' << dec << e.second << endl; }
+    for (auto& e : histogram) {
+        if (!(e.first >= from && e.first < from + sz))
+            fout << "skipped " << hex << L"0x" << (int)e.first << L" " << e.first << L'\t' << dec << e.second << " times" << endl; }
     std::cout << "read " << len << " chars" << endl << endl;
 
     // testing on various inputs, and of implmentations
